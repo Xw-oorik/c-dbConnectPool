@@ -1,0 +1,11 @@
+{
+    "ip":"127.0.0.1",    
+    "port":3306,
+    "user":"oorik",
+    "passwd":"033018",
+    "dbname":"testdb",
+    "maxsize":1024,
+    "minsize":10,
+    "timeout":1000,
+    "iddtime":2000
+}
