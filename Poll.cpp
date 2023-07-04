@@ -9,7 +9,7 @@ Poll* Poll::getPoll()
     static Poll poll;
     return &poll;
 }
-bool Poll::parseJsonFile()//½âÎöjsonÎÄ¼ş
+bool Poll::parseJsonFile()//è§£æjsonæ–‡ä»¶
 {
     ifstream ifs("dbconf.json");
     Json::Reader rd;
@@ -31,64 +31,66 @@ bool Poll::parseJsonFile()//½âÎöjsonÎÄ¼ş
     cout << "aaaa" << endl;
     return false;
 }
-shared_ptr<MySqlConnet> Poll::getConnection()// ¸øÍâ²¿Ìá¹©½Ó¿Ú£¬´ÓÁ¬½Ó³ØÖĞ»ñÈ¡¿ÉÓÃµÄ¿ÕÏĞÁ¬½Ó
+shared_ptr<MySqlConnet> Poll::getConnection()// ç»™å¤–éƒ¨æä¾›æ¥å£ï¼Œä»è¿æ¥æ± ä¸­è·å–å¯ç”¨çš„ç©ºé—²è¿æ¥ï¼Œå……å½“ç€æ¶ˆè´¹è€…çš„è§’è‰²
 {
     unique_lock<mutex> locker(m_mutex);
-    while (m_connetionQ.empty())//Á¬½ÓÎª¿Õ£¬¾Í×èÈûµÈ´ı³¬Ê±Ê±¼ä£¬Èç¹ûÊ±¼ä¹ıÁË£¬»¹Ã»»½ĞÑ
+    while (m_connetionQ.empty())//è¿æ¥ä¸ºç©ºï¼Œå°±é˜»å¡ç­‰å¾…è¶…æ—¶æ—¶é—´ï¼Œå¦‚æœæ—¶é—´è¿‡äº†ï¼Œè¿˜æ²¡å”¤é†’
     {
-        if (cv_status::timeout == m_cond.wait_for(locker, chrono::milliseconds(m_timeout)))
+        if (cv_status::timeout == m_cond.wait_for(locker, chrono::milliseconds(m_timeout)))//æ˜¯çœŸçš„è¶…æ—¶é†’æ¥çš„
         {
-            if (m_connetionQ.empty())//±íÊ¾¾­¹ıÁËm_timeoutºó³¬Ê±ĞÑÀ´¶ÓÁĞÒÀÈ»Îª¿Õ
+            if (m_connetionQ.empty())//è¡¨ç¤ºç»è¿‡äº†m_timeoutåè¶…æ—¶é†’æ¥é˜Ÿåˆ—ä¾ç„¶ä¸ºç©º
             {
-                LOG("»ñÈ¡Á¬½Ó³¬Ê±...");
+                LOG("è·å–è¿æ¥è¶…æ—¶...");
                 continue;
             }
         }
     }
-    //¶ÔÓÚÊ¹ÓÃÍê³ÉµÄÁ¬½Ó£¬²»ÄÜÖ±½ÓÏú»Ù¸ÃÁ¬½Ó£¬¶øÊÇĞèÒª½«¸ÃÁ¬½Ó¹é»¹¸øÁ¬½Ó³ØµÄ¶ÓÁĞ£¬
-    // ¹©Ö®ºóµÄÆäËûÏû·ÑÕßÊ¹ÓÃ£¬
-    //ÓÚÊÇÎÒÃÇÊ¹ÓÃÖÇÄÜÖ¸Õë£¬×Ô¶¨ÒåÆäÎö¹¹º¯Êı£¬Íê³É·Å»ØµÄ²Ù×÷£º
+    //shared_ptrææ„æ—¶ä¼šæŠŠMySqlConnetèµ„æºç›´æ¥deleteï¼Œç›¸å½“äºè¿æ¥æ–­å¼€äº†
+    //å¯¹äºä½¿ç”¨å®Œæˆçš„è¿æ¥ï¼Œä¸èƒ½ç›´æ¥é”€æ¯è¯¥è¿æ¥ï¼Œè€Œæ˜¯éœ€è¦å°†è¯¥è¿æ¥å½’è¿˜ç»™è¿æ¥æ± çš„é˜Ÿåˆ—ï¼Œ
+    // ä¾›ä¹‹åçš„å…¶ä»–æ¶ˆè´¹è€…ä½¿ç”¨ï¼Œ
+    //äºæ˜¯æˆ‘ä»¬ä½¿ç”¨æ™ºèƒ½æŒ‡é’ˆï¼Œè‡ªå®šä¹‰å…¶ææ„å‡½æ•°ï¼Œå®Œæˆæ”¾å›çš„æ“ä½œï¼š
     shared_ptr<MySqlConnet> connptr(m_connetionQ.front(), [this](MySqlConnet* conn)
-        {m_mutex.lock();
+        {unique_lock<mutex> locker(m_mutex);
         conn->refreshAliveTime();
-        m_connetionQ.push(conn);
-        m_mutex.unlock();
+        m_connetionQ.push(conn);   //shared_ptrææ„çš„æ—¶å€™é‡æ–°åŠ å…¥è¿æ¥
+        ++m_connectionCount;
         }
     );
-    m_connetionQ.pop();
+    m_connetionQ.pop();  //å–è¿æ¥äº†
+    --m_connectionCount;
     if (m_connetionQ.empty())
-    {    //Á¬½Ó³Ø¶ÓÁĞÃ»ÓĞÁ¬½ÓÁË£¬Í¨ÖªÉú²úÕßÈ¥Éú²úĞÂÁ¬½Ó
+    {    //è¿æ¥æ± é˜Ÿåˆ—æ²¡æœ‰è¿æ¥äº†ï¼Œé€šçŸ¥ç”Ÿäº§è€…å»ç”Ÿäº§æ–°è¿æ¥
          m_cond.notify_all();
     }
     return connptr;
 }
-void Poll::producerConnection()//ÔËĞĞÔÚ¶ÀÁ¢µÄÏß³ÌÖĞ£¬¸ºÔğÉú²úĞÂµÄÁ¬½Ó
+void Poll::producerConnection()//è¿è¡Œåœ¨ç‹¬ç«‹çš„çº¿ç¨‹ä¸­ï¼Œè´Ÿè´£ç”Ÿäº§æ–°çš„è¿æ¥
 {
     while (true)
-    {  // Éú²úÕßĞèÒª·ÃÎÊÁ¬½Ó¶ÓÁĞ£¬¼ÓËø£¬·ÀÖ¹ºÍÏû·ÑÕßÍ¬Ê±·ÃÎÊ
+    {  // ç”Ÿäº§è€…éœ€è¦è®¿é—®è¿æ¥é˜Ÿåˆ—ï¼ŒåŠ é”ï¼Œé˜²æ­¢å’Œæ¶ˆè´¹è€…åŒæ—¶è®¿é—®
         unique_lock<mutex> locker(m_mutex);
-        while (m_connetionQ.size()>= m_minsize)
-        {   // Á¬½Ó³Ø¶ÓÁĞÀïÓĞ¶àÓàµÄÁ¬½Ó£¬Éú²úÏß³Ì½øÈëµÈ´ı×´Ì¬£¬²¢ÇÒÊÍ·Å¸Õ¸ÕÄÃµ½µÄ»¥³âËø
+        while (!m_connetionQ.empty())    //æ—§ç‰ˆè¿™ä¹ˆå†™çš„(m_connetionQ.size()>= m_minsize) é€»è¾‘æœ‰ç‚¹é—®é¢˜
+        {   // è¿æ¥æ± é˜Ÿåˆ—é‡Œæœ‰å¤šä½™çš„è¿æ¥ï¼Œç”Ÿäº§çº¿ç¨‹è¿›å…¥ç­‰å¾…çŠ¶æ€ï¼Œå¹¶ä¸”é‡Šæ”¾åˆšåˆšæ‹¿åˆ°çš„äº’æ–¥é”
             m_cond.wait(locker);
         }
-        if (m_connectionCount < m_maxsize)//Ã»ÓĞ´ïµ½×î´óÁ¬½ÓÊı£¬´´½¨Á¬½Ó
+        if (m_connectionCount < m_maxsize)//æ²¡æœ‰è¾¾åˆ°æœ€å¤§è¿æ¥æ•°ï¼Œåˆ›å»ºè¿æ¥
         {
              addConnection();
         }
-        //Í¨ÖªÏû·ÑÕß¿ÉÒÔÏû·ÑÁ¬½Ó
+        //é€šçŸ¥æ¶ˆè´¹è€…å¯ä»¥æ¶ˆè´¹è¿æ¥
         m_cond.notify_all();
     }
 }
-void Poll::recyclerConnection()
+void Poll::recyclerConnection() //å¤„ç†æœ€å¤§ç©ºé—²è¿æ¥
 {
     while (true)
     {
-        // ¶¨Ê±¼ì²é¶ÓÁĞ³¬Ê±µÄÁ¬½Ó
+        // å®šæ—¶æ£€æŸ¥é˜Ÿåˆ—è¶…æ—¶çš„è¿æ¥
         this_thread::sleep_for(chrono::milliseconds(m_iddtime));
         unique_lock<mutex> locker(m_mutex);
-        while (m_connetionQ.size() > m_minsize)
+        while (m_connectionCount > m_minsize)
         {
-            // ¶ÓÁĞÖĞµÄÁ¬½ÓÈ«¶¼¿ÕÏĞ£¬¼ì²é¶ÔÍ·¿ÕÏĞµÄÊ±¼ä£¬³¬¹ı¿ÕÏĞÊ±³¤ÔòÊÍ·Å
+            // é˜Ÿåˆ—ä¸­çš„è¿æ¥å…¨éƒ½ç©ºé—²ï¼Œæ£€æŸ¥å¯¹å¤´ç©ºé—²çš„æ—¶é—´ï¼Œè¶…è¿‡ç©ºé—²æ—¶é•¿åˆ™é‡Šæ”¾
             MySqlConnet* connt = m_connetionQ.front();
             if (connt->getAliveTime() >= m_iddtime)
             {
@@ -96,7 +98,7 @@ void Poll::recyclerConnection()
                 --m_connectionCount;
                 delete connt;
             }
-            else //¶ÓÎ²²åÈë¶ÔÍ·ÊÍ·Å£¬Èç¹û¶ÔÍ·µÄÁ¬½Ó¿ÕÏĞÊ±¼äÃ»ÓĞ³¬¹ı ÄÇÃ´ÆäËûÁ¬½Ó¿Ï¶¨Ò²Ã»ÓĞ³¬¹ı
+            else //é˜Ÿå°¾æ’å…¥å¯¹å¤´é‡Šæ”¾ï¼Œå¦‚æœå¯¹å¤´çš„è¿æ¥ç©ºé—²æ—¶é—´æ²¡æœ‰è¶…è¿‡ é‚£ä¹ˆå…¶ä»–è¿æ¥è‚¯å®šä¹Ÿæ²¡æœ‰è¶…è¿‡
             {
                 break;
             }
@@ -107,30 +109,33 @@ void Poll::addConnection()
 {
     MySqlConnet* conn = new MySqlConnet();
     conn->connet(m_user, m_passwd, m_dbname, m_ip, m_port);
-    //µ±Êı¾İ¿âÁ¬½Ó½¨Á¢³É¹¦ ¾ÍÒª¼ÇÂ¼Ê±¼ä´ÁÁË
+    //å½“æ•°æ®åº“è¿æ¥å»ºç«‹æˆåŠŸç»™åˆ°æ± å­é‡Œï¼Œ å°±è¦è®°å½•æ—¶é—´æˆ³äº†ï¼Œåˆ·æ–°ç©ºé—²çš„èµ·å§‹æ—¶é—´
     conn->refreshAliveTime();
     m_connetionQ.push(conn);
-    m_connectionCount++;//Á¬½Ó×ÜÊı++
+    m_connectionCount++;//è¿æ¥æ€»æ•°++
 
 }
 Poll::Poll()
 {
-    //¼ÓÔØjsonÎÄ¼ş
+    //åŠ è½½jsonæ–‡ä»¶
     if (!parseJsonFile())
     {
         return;
     }
-    //´´½¨Êı¾İ¿âÁ¬½Ó
+    //åˆ›å»ºæ•°æ®åº“è¿æ¥
     for (int i = 0; i < m_minsize; ++i)
     {
         addConnection();
     }
-    //´´½¨Á½¸öÏß³Ì
-    //Ò»¸öÈ¥Éú²úÁ¬½Ó Ò»¸öÈ¥Ïú»Ù¶àÓà¿ÕÏĞÁ¬½Ó
-    //ÀàµÄ·Ç¾²Ì¬³ÉÔ±º¯Êı ´«µÄ»°Òª´«µØÖ·ºÍthis
+    //åˆ›å»ºä¸¤ä¸ªçº¿ç¨‹
+    //ä¸€ä¸ªå»ç”Ÿäº§è¿æ¥ ä¸€ä¸ªå»é”€æ¯å¤šä½™ç©ºé—²è¿æ¥
+    //ç±»çš„éé™æ€æˆå‘˜å‡½æ•° ä¼ çš„è¯è¦ä¼ åœ°å€å’Œthis
     thread producer(&Poll::producerConnection, this);
     thread recycler(&Poll::recyclerConnection, this);
-    //·ÖÀë
+    //ç­‰ä»·æ•ˆæœthread producer(bind(&Poll::producerConnection, this)); 
+   // ä¸¤ç§å†™æ³•çš„åŒºåˆ«åœ¨äºä½¿ç”¨äº†ä¸åŒçš„æ–¹å¼æ¥æŒ‡å®šçº¿ç¨‹å‡½æ•°ã€‚ç¬¬ä¸€ç§å†™æ³•ç›´æ¥ä½¿ç”¨æˆå‘˜å‡½æ•°æŒ‡é’ˆä½œä¸ºçº¿ç¨‹å‡½æ•°ï¼Œ
+   // è€Œç¬¬äºŒç§å†™æ³•ä½¿ç”¨äº†std::bindå‡½æ•°å°†æˆå‘˜å‡½æ•°å’Œå¯¹è±¡æŒ‡é’ˆç»‘å®šä¸ºå¯è°ƒç”¨å¯¹è±¡ã€‚ç„¶åï¼Œé€šè¿‡è°ƒç”¨std::threadæ„é€ å‡½æ•°æ¥åˆ›å»ºçº¿ç¨‹å¯¹è±¡ã€‚
+    //åˆ†ç¦»
     producer.detach();
     recycler.detach();
 }
